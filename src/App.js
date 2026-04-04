@@ -1,102 +1,318 @@
 import React from "react";
 import { useAuth0 } from "@auth0/auth0-react";
+import { PieChart, Pie, Cell, Tooltip } from "recharts";
 
 function App() {
   const {
     isLoading,
     isAuthenticated,
-    error,
     loginWithRedirect,
     logout,
     user,
     getAccessTokenSilently,
   } = useAuth0();
 
-  const callApi = async () => {
-    try {
-      console.log("CALLING API...");
+  const [amount, setAmount] = React.useState("");
+  const [category, setCategory] = React.useState("");
+  const [expenses, setExpenses] = React.useState([]);
+  const [budget, setBudget] = React.useState("");
+  const [savedBudget, setSavedBudget] = React.useState(null);
+  const [aiText, setAiText] = React.useState("");
 
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: "https://my-api",
-        },
-      });
+  const getToken = async () =>
+    await getAccessTokenSilently({
+      authorizationParams: { audience: "https://my-api" },
+    });
 
-      console.log("TOKEN:", token);
-
-      const res = await fetch("http://localhost:5001/protected", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      console.log("STATUS:", res.status);
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text}`);
-      }
-
-      const data = await res.json();
-      console.log("API RESPONSE:", data);
-
-      alert("✅ API Success!");
-    } catch (err) {
-      console.error("❌ ERROR:", err);
-      alert("❌ " + err.message);
-    }
+  const loadExpenses = async () => {
+    const token = await getToken();
+    const res = await fetch("http://localhost:5001/expenses", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setExpenses(await res.json());
   };
 
-  if (isLoading) return <div>Loading...</div>;
+  const addExpense = async () => {
+    if (!amount || !category.trim()) return alert("กรอกให้ครบ");
+
+    const token = await getToken();
+
+    await fetch("http://localhost:5001/expenses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: Number(amount),
+        category,
+      }),
+    });
+
+    setAmount("");
+    setCategory("");
+    loadExpenses();
+  };
+
+  const deleteExpense = async (id) => {
+    const token = await getToken();
+
+    await fetch(`http://localhost:5001/expenses/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    loadExpenses();
+  };
+
+  const getAI = async () => {
+    const token = await getToken();
+
+    const res = await fetch("http://localhost:5001/ai-summary", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const data = await res.json();
+    setAiText(data.message);
+  };
+
+  React.useEffect(() => {
+    if (isAuthenticated) loadExpenses();
+  }, [isAuthenticated]);
+
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
+  const remaining = (savedBudget || 0) - total;
+
+  const chartData = Object.values(
+    expenses.reduce((acc, e) => {
+      acc[e.category] = acc[e.category] || {
+        name: e.category,
+        value: 0,
+      };
+      acc[e.category].value += e.amount;
+      return acc;
+    }, {})
+  );
+
+  if (isLoading) return <div style={styles.center}>Loading...</div>;
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>AI Auth App 🚀</h1>
+    <div style={styles.container}>
+      <h1 style={styles.title}>💰 AI Budget Tracker</h1>
 
       {isAuthenticated ? (
-        <>
-          <p>Logged in as: {user.email}</p>
+        <div style={styles.card}>
+          {/* USER */}
+          <img src={user.picture} alt="" style={styles.avatar} />
+          <h2>{user.nickname}</h2>
+          <p style={styles.email}>{user.email}</p>
 
-          <h3>User Info:</h3>
-          <pre>{JSON.stringify(user, null, 2)}</pre>
+          {/* BUDGET */}
+          <div style={styles.section}>
+            <h3>💰 Budget</h3>
+            <input
+              style={styles.input}
+              placeholder="Set your budget"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+            />
+            <button
+              style={styles.primaryBtn}
+              onClick={() => setSavedBudget(Number(budget))}
+            >
+              Save Budget
+            </button>
+          </div>
 
-          <button onClick={callApi}>
-            Call Protected API
-          </button>
+          {/* ADD */}
+          <div style={styles.section}>
+            <h3>➕ Add Expense</h3>
+            <input
+              style={styles.input}
+              placeholder="Amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <input
+              style={styles.input}
+              placeholder="Category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            />
+            <button style={styles.primaryBtn} onClick={addExpense}>
+              Add Expense
+            </button>
+          </div>
 
-          <br /><br />
+          {/* LIST */}
+          <div style={styles.section}>
+            <h3>📊 Expenses</h3>
 
+            {expenses.length === 0 ? (
+              <p style={{ color: "#888" }}>No expenses yet</p>
+            ) : (
+              expenses.map((e) => (
+                <div key={e.id} style={styles.expenseItem}>
+                  <span>
+                    {e.category} - {e.amount} บาท
+                  </span>
+                  <button
+                    style={styles.deleteBtn}
+                    onClick={() => deleteExpense(e.id)}
+                  >
+                    🗑
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* SUMMARY */}
+          <div style={styles.summaryBox}>
+            <h3>📊 Summary</h3>
+            <p>💸 Total: {total} บาท</p>
+            <p
+              style={{
+                color: remaining < 0 ? "red" : "green",
+                fontWeight: "bold",
+              }}
+            >
+              💰 Remaining: {remaining} บาท
+            </p>
+
+            <button style={styles.secondaryBtn} onClick={getAI}>
+              🤖 Analyze
+            </button>
+
+            {aiText && <p style={styles.aiText}>{aiText}</p>}
+          </div>
+
+          {/* CHART */}
+          {chartData.length > 0 && (
+            <PieChart width={280} height={280}>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="name"
+                outerRadius={100}
+              >
+                {chartData.map((_, i) => (
+                  <Cell key={i} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          )}
+
+          {/* LOGOUT */}
           <button
-            onClick={() =>
-              logout({ returnTo: window.location.origin })
-            }
+            style={styles.logoutBtn}
+            onClick={() => logout()}
           >
             Logout
           </button>
-        </>
+        </div>
       ) : (
-        <>
-          {error && <p>Error: {error.message}</p>}
-
-          <button onClick={() => loginWithRedirect()}>
-            Login
-          </button>
-
-          <button
-            onClick={() =>
-              loginWithRedirect({
-                authorizationParams: { screen_hint: "signup" },
-              })
-            }
-          >
-            Signup
-          </button>
-        </>
+        <button style={styles.primaryBtn} onClick={loginWithRedirect}>
+          Login
+        </button>
       )}
     </div>
   );
 }
+
+const styles = {
+  container: {
+    fontFamily: "sans-serif",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    marginTop: 40,
+  },
+  title: {
+    marginBottom: 20,
+  },
+  card: {
+    width: 340,
+    padding: 25,
+    borderRadius: 16,
+    boxShadow: "0 8px 30px rgba(0,0,0,0.1)",
+    textAlign: "center",
+    background: "#fff",
+  },
+  avatar: {
+    width: 70,
+    borderRadius: "50%",
+    marginBottom: 10,
+  },
+  email: {
+    color: "#777",
+    fontSize: 14,
+  },
+  section: {
+    marginTop: 20,
+  },
+  input: {
+    width: "100%",
+    padding: 10,
+    marginTop: 8,
+    borderRadius: 8,
+    border: "1px solid #ddd",
+  },
+  primaryBtn: {
+    width: "100%",
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    border: "none",
+    background: "#4f46e5",
+    color: "white",
+    cursor: "pointer",
+  },
+  secondaryBtn: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    border: "none",
+    background: "#e5e7eb",
+    cursor: "pointer",
+  },
+  deleteBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+  },
+  expenseItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: 8,
+    padding: "8px 10px",
+    borderRadius: 8,
+    background: "#f9fafb",
+  },
+  summaryBox: {
+    marginTop: 20,
+    padding: 15,
+    borderRadius: 12,
+    background: "#f3f4f6",
+  },
+  aiText: {
+    marginTop: 10,
+    fontStyle: "italic",
+  },
+  logoutBtn: {
+    marginTop: 20,
+    width: "100%",
+    padding: 12,
+    borderRadius: 10,
+    border: "none",
+    background: "#ef4444",
+    color: "white",
+    cursor: "pointer",
+  },
+  center: {
+    marginTop: 50,
+  },
+};
 
 export default App;

@@ -1,0 +1,18 @@
+🥈 ตัวเลือกสายใช้งานจริง
+💰 AI Budget Tracker (Fintech + AI)
+💡 ไอเดีย
+
+เว็บช่วยจัดการเงิน:
+
+user login
+ใส่ expense
+AI วิเคราะห์ว่าใช้เงินเกินไหม
+🧩 ฟีเจอร์
+Auth0 login
+CRUD expenses
+AI summary เช่น:
+“คุณใช้เงินเยอะกับอาหาร”
+จำกัดสิทธิ์ข้อมูล user
+🎯 จุดเด่น
+ดูเป็น product จริง
+สาย fintech = ดู serious
